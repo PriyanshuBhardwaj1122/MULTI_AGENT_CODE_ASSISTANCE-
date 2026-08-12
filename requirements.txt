@@ -1,0 +1,25 @@
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0      # the ASGI server that runs FastAPI
+python-multipart>=0.0.9        # needed for UploadFile (multipart/form-data) to work
+
+# ── Data validation ───────────────────────────────────────────────────────────
+pydantic>=2.7.0                # FastAPI uses Pydantic for all request/response schemas
+pydantic-settings>=2.3.0       # reads .env files into a Settings class
+
+# ── Agent orchestration ───────────────────────────────────────────────────────
+langgraph>=0.1.19              # the graph orchestrator — parallel fan-out, state management
+langchain>=0.2.0               # base abstractions: prompts, tools, chains
+langchain-anthropic>=0.1.15    # LangChain adapter for Claude via Anthropic API
+langchain-core>=0.2.0          # shared primitives used by all langchain-* packages
+
+# ── MCP (Model Context Protocol) ──────────────────────────────────────────────
+mcp>=1.0.0                     # official MCP Python SDK — used by MCP tool servers in M2/M3
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0           # loads .env file into environment variables
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=8.2.0
+pytest-asyncio>=0.23.0         # lets pytest run async test functions
+httpx>=0.27.0                  # async HTTP client used to test FastAPI endpoints
