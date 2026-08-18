@@ -31,6 +31,8 @@ interactive API documentation (powered by your Pydantic schemas).
 import logging
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 
@@ -58,3 +60,10 @@ app = FastAPI(
 # ── Register routes ────────────────────────────────────────────────────────────
 # All routes in routes.py (/review, /review/{id}, /health) become available.
 app.include_router(router)
+
+# ── Frontend (M6 UI) ───────────────────────────────────────────────────────────
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+@app.get("/", include_in_schema=False)
+async def serve_ui():
+    return FileResponse("app/static/index.html")

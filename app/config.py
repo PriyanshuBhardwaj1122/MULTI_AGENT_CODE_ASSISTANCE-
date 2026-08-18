@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # ── Agent behaviour ───────────────────────────────────────────────────────
     # Each agent node in LangGraph will time out after this many seconds.
     # Prevents one slow agent from blocking the whole review indefinitely.
-    agent_timeout_seconds: int = 45
+    agent_timeout_seconds: int = 120
 
     # ── Job store ─────────────────────────────────────────────────────────────
     # "memory" = in-process dict (fine for v1 single-instance demo)

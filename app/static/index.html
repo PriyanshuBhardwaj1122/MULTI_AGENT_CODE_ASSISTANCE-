@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Code Review Assistant</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3a;
+    --accent: #6366f1;
+    --accent-dim: #4f52c9;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --critical: #dc2626;
+    --high: #f97316;
+    --medium: #eab308;
+    --low: #3b82f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  /* ── Layout ── */
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; gap: 12px; }
+  .header-logo { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .header span { color: var(--muted); font-size: 13px; margin-left: 4px; }
+  .main { max-width: 860px; margin: 0 auto; padding: 40px 24px; }
+
+  /* ── Upload card ── */
+  .upload-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 40px; text-align: center; }
+  .drop-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 48px 32px; cursor: pointer; transition: border-color .2s, background .2s; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: rgba(99,102,241,.05); }
+  .drop-icon { font-size: 48px; margin-bottom: 16px; }
+  .drop-zone h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+  .drop-zone p { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background .2s; }
+  .btn:hover { background: var(--accent-dim); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  #file-input { display: none; }
+  .file-chosen { margin-top: 16px; color: var(--muted); font-size: 13px; }
+  .file-chosen strong { color: var(--text); }
+
+  /* ── Progress ── */
+  .progress-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-top: 24px; display: none; }
+  .progress-card.visible { display: block; }
+  .progress-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .progress-title { font-size: 16px; font-weight: 600; }
+  .job-id { font-size: 11px; color: var(--muted); font-family: monospace; }
+  .agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .agent { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .agent-name { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 6px; }
+  .agent-status { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-pending  { background: var(--border); }
+  .dot-running  { background: var(--warning); animation: pulse 1s infinite; }
+  .dot-done     { background: var(--success); }
+  .dot-failed   { background: var(--danger); }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+  .log { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; font-size: 12px; font-family: monospace; color: var(--muted); max-height: 120px; overflow-y: auto; }
+  .log-line { margin-bottom: 4px; }
+  .log-line:last-child { margin-bottom: 0; color: var(--text); }
+
+  /* ── Report ── */
+  .report-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-top: 24px; display: none; }
+  .report-card.visible { display: block; }
+  .score-row { display: flex; align-items: center; gap: 24px; margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+  .score-circle { width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; flex-shrink: 0; }
+  .score-high   { background: rgba(34,197,94,.15);  color: var(--success); border: 2px solid var(--success); }
+  .score-mid    { background: rgba(245,158,11,.15);  color: var(--warning); border: 2px solid var(--warning); }
+  .score-low    { background: rgba(239,68,68,.15);   color: var(--danger);  border: 2px solid var(--danger);  }
+  .score-info h2 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+  .score-info p  { color: var(--muted); font-size: 14px; line-height: 1.6; }
+  .section-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 12px; }
+  .top-issues { margin-bottom: 24px; }
+  .issue-item { display: flex; gap: 10px; margin-bottom: 8px; font-size: 14px; line-height: 1.5; }
+  .issue-num { color: var(--accent); font-weight: 600; flex-shrink: 0; }
+  .rec-box { background: rgba(99,102,241,.08); border: 1px solid rgba(99,102,241,.25); border-radius: 8px; padding: 14px 16px; font-size: 14px; margin-bottom: 24px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat-tile { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; text-align: center; }
+  .stat-num  { font-size: 28px; font-weight: 700; }
+  .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-top: 4px; }
+  .sev-critical { color: var(--critical); }
+  .sev-high     { color: var(--high); }
+  .sev-medium   { color: var(--medium); }
+  .sev-low      { color: var(--low); }
+  .findings-section { margin-bottom: 24px; }
+  .finding { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; }
+  .finding-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; padding: 2px 7px; border-radius: 4px; }
+  .badge-critical { background: rgba(220,38,38,.2);  color: var(--critical); }
+  .badge-high     { background: rgba(249,115,22,.2); color: var(--high); }
+  .badge-medium   { background: rgba(234,179,8,.2);  color: var(--medium); }
+  .badge-low      { background: rgba(59,130,246,.2); color: var(--low); }
+  .finding-file { font-family: monospace; font-size: 12px; color: var(--muted); }
+  .finding-msg  { font-size: 14px; margin-bottom: 6px; }
+  .finding-evidence { font-size: 12px; color: var(--muted); font-style: italic; }
+  .errors-box { background: rgba(239,68,68,.05); border: 1px solid rgba(239,68,68,.2); border-radius: 8px; padding: 14px 16px; }
+  .error-item { font-size: 12px; font-family: monospace; color: var(--danger); margin-bottom: 6px; }
+  .error-item:last-child { margin-bottom: 0; }
+  .try-again { margin-top: 20px; text-align: center; }
+  .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 20px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">🔍</div>
+  <h1>Code Review Assistant <span>Multi-Agent</span></h1>
+</div>
+
+<div class="main">
+
+  <!-- Upload -->
+  <div class="upload-card">
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-icon">📦</div>
+      <h2>Upload your repository</h2>
+      <p>Drop a .zip archive here, or click to browse</p>
+      <button class="btn" onclick="document.getElementById('file-input').click()">
+        📂 Choose ZIP file
+      </button>
+      <input type="file" id="file-input" accept=".zip">
+      <div class="file-chosen" id="file-chosen"></div>
+    </div>
+    <div style="margin-top:20px">
+      <button class="btn" id="submit-btn" onclick="submitReview()" disabled style="width:100%;justify-content:center;padding:14px">
+        🚀 Start Review
+      </button>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-card" id="progress-card">
+    <div class="progress-header">
+      <div class="progress-title">⚙️ Running Review…</div>
+      <div class="job-id" id="job-id-label"></div>
+    </div>
+    <div class="agents" id="agents-grid"></div>
+    <div class="section-title" style="margin-bottom:8px">Live Events</div>
+    <div class="log" id="event-log"><div class="log-line">Waiting for events…</div></div>
+  </div>
+
+  <!-- Report -->
+  <div class="report-card" id="report-card">
+    <div class="score-row">
+      <div class="score-circle" id="score-circle"></div>
+      <div class="score-info">
+        <h2 id="report-repo"></h2>
+        <p id="exec-summary"></p>
+      </div>
+    </div>
+
+    <div class="top-issues" id="top-issues-section"></div>
+
+    <div class="section-title">Primary Recommendation</div>
+    <div class="rec-box" id="primary-rec"></div>
+
+    <div class="section-title">Severity Breakdown</div>
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <div class="findings-section" id="findings-section"></div>
+
+    <div id="errors-section"></div>
+
+    <div class="try-again">
+      <button class="btn" onclick="resetUI()">🔄 Review Another Project</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const AGENTS = ['static_analysis', 'security', 'performance', 'style', 'summary'];
+let selectedFile = null;
+let currentJobId = null;
+let eventSource = null;
+
+// ── File selection ──────────────────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', e => {
+  selectFile(e.target.files[0]);
+});
+
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.endsWith('.zip')) selectFile(f);
+  else alert('Please drop a .zip file');
+});
+
+function selectFile(file) {
+  if (!file) return;
+  selectedFile = file;
+  document.getElementById('file-chosen').innerHTML = `Selected: <strong>${file.name}</strong> (${(file.size/1024).toFixed(1)} KB)`;
+  document.getElementById('submit-btn').disabled = false;
+}
+
+// ── Submit ──────────────────────────────────────────────────────────────────
+async function submitReview() {
+  if (!selectedFile) return;
+  document.getElementById('submit-btn').disabled = true;
+  document.getElementById('submit-btn').textContent = '⏳ Submitting…';
+
+  const form = new FormData();
+  form.append('file', selectedFile);
+
+  try {
+    const res = await fetch('/review', { method: 'POST', body: form });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Submit failed'); }
+    const data = await res.json();
+    currentJobId = data.job_id;
+    startProgressUI(data.job_id);
+    openStream(data.job_id);
+  } catch (err) {
+    alert('Error: ' + err.message);
+    document.getElementById('submit-btn').disabled = false;
+    document.getElementById('submit-btn').textContent = '🚀 Start Review';
+  }
+}
+
+// ── Progress UI ─────────────────────────────────────────────────────────────
+function startProgressUI(jobId) {
+  document.getElementById('progress-card').classList.add('visible');
+  document.getElementById('report-card').classList.remove('visible');
+  document.getElementById('job-id-label').textContent = 'Job: ' + jobId;
+
+  const grid = document.getElementById('agents-grid');
+  grid.innerHTML = '';
+  AGENTS.forEach(name => {
+    grid.innerHTML += `
+      <div class="agent" id="agent-${name}">
+        <div class="agent-name">${name.replace('_', ' ')}</div>
+        <div class="agent-status">
+          <div class="dot dot-pending" id="dot-${name}"></div>
+          <span id="label-${name}">Pending</span>
+        </div>
+      </div>`;
+  });
+  document.getElementById('event-log').innerHTML = '<div class="log-line">Connected — waiting for agents…</div>';
+}
+
+function setAgentStatus(name, status) {
+  const dot = document.getElementById(`dot-${name}`);
+  const label = document.getElementById(`label-${name}`);
+  if (!dot) return;
+  dot.className = 'dot dot-' + status;
+  label.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function appendLog(msg) {
+  const log = document.getElementById('event-log');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ── SSE stream ──────────────────────────────────────────────────────────────
+function openStream(jobId) {
+  if (eventSource) eventSource.close();
+
+  // Mark first agent as running
+  setAgentStatus('static_analysis', 'running');
+
+  eventSource = new EventSource(`/review/${jobId}/stream`);
+
+  eventSource.onmessage = e => {
+    const evt = JSON.parse(e.data);
+
+    if (evt.type === 'heartbeat') return;
+
+    if (evt.type === 'node_complete') {
+      const node = evt.data.node;
+      setAgentStatus(node, 'done');
+      appendLog(`✅ ${node.replace('_', ' ')} completed`);
+
+      // Mark next agent as running
+      const idx = AGENTS.indexOf(node);
+      if (idx >= 0 && idx < AGENTS.length - 1) {
+        setAgentStatus(AGENTS[idx + 1], 'running');
+      }
+    }
+
+    if (evt.type === 'job_complete') {
+      appendLog('🎉 Review complete!');
+      eventSource.close();
+      showReport(evt.data, jobId);
+    }
+
+    if (evt.type === 'job_failed') {
+      appendLog('❌ Review failed: ' + evt.data.error);
+      eventSource.close();
+      // Fall back to polling the status endpoint
+      fetchAndShowReport(jobId);
+    }
+  };
+
+  eventSource.onerror = () => {
+    // Stream closed — poll for final result
+    eventSource.close();
+    fetchAndShowReport(jobId);
+  };
+}
+
+async function fetchAndShowReport(jobId) {
+  try {
+    const res = await fetch(`/review/${jobId}`);
+    const data = await res.json();
+    if (data.report) showReport(data.report, jobId);
+  } catch (e) { appendLog('Could not fetch report: ' + e.message); }
+}
+
+// ── Render report ────────────────────────────────────────────────────────────
+function showReport(report, jobId) {
+  document.getElementById('progress-card').classList.remove('visible');
+  const card = document.getElementById('report-card');
+  card.classList.add('visible');
+
+  // Score
+  const score = report.overall_score ?? 0;
+  const circle = document.getElementById('score-circle');
+  circle.textContent = score;
+  circle.className = 'score-circle ' + (score >= 80 ? 'score-high' : score >= 50 ? 'score-mid' : 'score-low');
+
+  // Header
+  document.getElementById('report-repo').textContent = `${report.stats?.files_analyzed ?? 0} files analyzed`;
+  document.getElementById('exec-summary').textContent = report.executive_summary ?? '';
+
+  // Top issues
+  const issues = report.top_issues ?? [];
+  const issuesSec = document.getElementById('top-issues-section');
+  if (issues.length) {
+    issuesSec.innerHTML = `<div class="section-title">Top Issues</div>` +
+      issues.map((iss, i) => `<div class="issue-item"><span class="issue-num">${i+1}.</span><span>${iss}</span></div>`).join('');
+  } else { issuesSec.innerHTML = ''; }
+
+  // Recommendation
+  document.getElementById('primary-rec').textContent = report.primary_recommendation ?? '';
+
+  // Stats grid
+  const sev = report.stats?.findings_by_severity ?? {};
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-tile"><div class="stat-num sev-critical">${sev.critical??0}</div><div class="stat-label">Critical</div></div>
+    <div class="stat-tile"><div class="stat-num sev-high">${sev.high??0}</div><div class="stat-label">High</div></div>
+    <div class="stat-tile"><div class="stat-num sev-medium">${sev.medium??0}</div><div class="stat-label">Medium</div></div>
+    <div class="stat-tile"><div class="stat-num sev-low">${sev.low??0}</div><div class="stat-label">Low</div></div>`;
+
+  // Findings
+  const findings = report.findings ?? {};
+  const findSec = document.getElementById('findings-section');
+  let findHtml = '';
+  let totalFindings = 0;
+  for (const [cat, list] of Object.entries(findings)) {
+    if (!list || list.length === 0) continue;
+    totalFindings += list.length;
+    findHtml += `<div class="section-title" style="margin-top:20px">${cat.replace('_',' ')}</div>`;
+    list.forEach(f => {
+      const sev = (f.severity || 'low').toLowerCase();
+      findHtml += `
+        <div class="finding">
+          <div class="finding-header">
+            <span class="badge badge-${sev}">${sev}</span>
+            <span class="finding-file">${f.file || ''}${f.line ? ':' + f.line : ''}</span>
+          </div>
+          <div class="finding-msg">${f.message || ''}</div>
+          ${f.evidence ? `<div class="finding-evidence">Evidence: ${f.evidence}</div>` : ''}
+        </div>`;
+    });
+  }
+  if (totalFindings === 0) {
+    findHtml = `<div class="empty">✅ No code issues found</div>`;
+  }
+  findSec.innerHTML = findHtml;
+
+  // Agent errors
+  const errs = report.agent_errors ?? {};
+  const errSec = document.getElementById('errors-section');
+  const errEntries = Object.entries(errs);
+  if (errEntries.length) {
+    errSec.innerHTML = `<div class="section-title" style="margin-top:20px">Agent Errors</div>
+      <div class="errors-box">` +
+      errEntries.map(([agent, msg]) =>
+        `<div class="error-item">⚠ ${agent}: ${(msg+'').slice(0,120)}</div>`).join('') +
+      `</div>`;
+  } else { errSec.innerHTML = ''; }
+}
+
+// ── Reset ────────────────────────────────────────────────────────────────────
+function resetUI() {
+  selectedFile = null;
+  currentJobId = null;
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  document.getElementById('file-chosen').innerHTML = '';
+  document.getElementById('submit-btn').disabled = true;
+  document.getElementById('submit-btn').textContent = '🚀 Start Review';
+  document.getElementById('file-input').value = '';
+  document.getElementById('progress-card').classList.remove('visible');
+  document.getElementById('report-card').classList.remove('visible');
+}
+</script>
+</body>
+</html>

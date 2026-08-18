@@ -71,3 +71,9 @@ class JobRecord(BaseModel):
 
     # Set when status == FAILED
     error: Optional[str] = None
+
+    # ── M6: SSE event queue ────────────────────────────────────────────────────
+    # Each entry is a dict: {"type": str, "data": dict, "ts": ISO-string}
+    # Appended by push_event() in the store; consumed by the /stream endpoint.
+    # Kept in insertion order so the SSE endpoint can slice from an offset.
+    events: list[dict] = Field(default_factory=list)

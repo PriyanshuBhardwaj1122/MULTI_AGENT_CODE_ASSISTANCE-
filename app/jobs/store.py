@@ -30,8 +30,8 @@ In our v1 setup only one background task runs at a time per request, so we don't
 need a threading lock. In a multi-worker production setup you'd need Redis (which
 handles concurrency for you) instead of this in-memory store.
 """
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from app.jobs.models import JobRecord, JobStatus
 
@@ -81,6 +81,30 @@ class InMemoryJobStore:
     def all_jobs(self) -> list[JobRecord]:
         """Return all jobs — useful for debugging / admin tooling."""
         return list(self._jobs.values())
+
+    def push_event(self, job_id: str, event_type: str, data: dict[str, Any]) -> None:
+        """
+        Append a streaming event to the job's event queue (M6).
+
+        Called from _run_review() whenever a node completes or the job
+        transitions to a terminal state. The SSE endpoint reads job.events
+        from an offset to stream only new events to the client.
+
+        event_type values:
+            "node_complete"  — one analysis agent finished
+            "job_complete"   — the whole review finished (status=complete)
+            "job_failed"     — the review failed (status=failed)
+
+        data: arbitrary dict, serialized as the SSE `data:` payload.
+        """
+        job = self._jobs.get(job_id)
+        if not job:
+            return
+        job.events.append({
+            "type": event_type,
+            "data": data,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        })
 
 
 # ─── Module-level singleton ────────────────────────────────────────────────────

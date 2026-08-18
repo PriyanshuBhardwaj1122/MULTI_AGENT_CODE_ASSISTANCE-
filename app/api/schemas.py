@@ -18,7 +18,7 @@ FastAPI validates EVERY response against the response_model before sending it.
 If a route accidentally puts a wrong type in the response, FastAPI catches it
 here rather than sending malformed JSON.
 """
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -65,3 +65,21 @@ class ReviewStatusResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str     # "ok"
     version: str
+
+
+# ── M6: SSE event schema ──────────────────────────────────────────────────────
+
+class SSEEvent(BaseModel):
+    """
+    A single Server-Sent Event pushed to a client subscribed to
+    GET /review/{job_id}/stream.
+
+    Clients should switch on `type`:
+      "node_complete"  → data contains {node, completed_agents, pending_agents}
+      "job_complete"   → data contains the final report dict
+      "job_failed"     → data contains {error: str}
+      "heartbeat"      → data is {} — sent every ~15 s so the connection stays alive
+    """
+    type: str
+    data: dict[str, Any]
+    ts: str         # ISO-8601 UTC timestamp

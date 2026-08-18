@@ -1,48 +1,33 @@
 """
-tools/git_reader_tool.py — LangChain Tool wrapping the Git repo reader MCP server.
+tools/git_reader_tool.py — LangChain tools for the git reader MCP server.
 
-STATUS: STUB — implemented in M2.
+These tools are created per-job via ToolManager. See tool_manager.py for how
+the MCP subprocess connection is managed and how repo_path is injected via closure.
 
-THE BIG PICTURE: WHY MCP + LANGCHAIN TOOL WRAPPER?
-----------------------------------------------------
-There are three layers here. Understanding them is key:
+This file's public interface:
+    from app.tools.git_reader_tool import GIT_READER_TOOL_NAMES
 
-LAYER 1 — MCP Server (app/mcp_servers/git_reader/)
-  A standalone Python process that exposes three methods over the MCP protocol:
-    list_files(extensions?, exclude_patterns?) → filtered file tree
-    read_file(path)                            → file contents
-    get_commit_history(limit?)                 → recent commits
+    # Used in M3 when building agents:
+    async with ToolManager(repo_path) as tm:
+        tools = tm.git_reader_tools()
+        # tools is a list of StructuredTool with these names:
+        #   list_files, read_file, get_commit_history
 
-  It runs as a separate process (stdio or local HTTP). The MCP protocol is
-  what Claude natively understands for tool-calling — it's a standard that
-  Anthropic designed so LLMs can discover and call tools uniformly.
-
-  Why a separate process? Because in M3 (and definitely in v2), the test runner
-  needs to execute untrusted code in a sandbox. Running that in a subprocess
-  with restricted permissions (no network, limited CPU/memory) is much safer
-  than running it in the same process as the FastAPI server.
-
-LAYER 2 — LangChain Tool (this file)
-  A thin wrapper that adapts the MCP server's interface to a LangChain Tool object.
-  LangChain Agents use Tool objects to know what tools exist and how to call them.
-
-    git_reader_tool = Tool(
-        name="read_repo_files",
-        description="List files or read file contents from the uploaded repository.",
-        func=mcp_git_reader_client.call,
-    )
-
-LAYER 3 — LangChain Agent (agents/base.py → agents/static_analysis.py, etc.)
-  The Claude LLM with git_reader_tool (and others) bound to it via llm.bind_tools().
-  Claude sees the tool descriptions and decides when/how to call them.
-  LangChain handles the tool-call → execute → result → back-to-LLM loop.
-
-SO THE QUESTION "WHY NOT JUST FASTAPI FOR TOOLS?" ANSWERED:
--------------------------------------------------------------
-If tools were FastAPI endpoints, the LLM would need the URL and argument format
-hardcoded into its system prompt. There'd be no standard discovery mechanism.
-MCP is a protocol Claude understands natively — the LLM can see "here are the
-available tools and their signatures" and decide what to call. It's the difference
-between giving someone a phone book (MCP) vs. making them memorize every number (hardcoding).
+WHICH AGENTS USE THESE:
+    - Static Analysis Agent: reads files to supplement linter output (logic bugs
+      linters miss, e.g. missing edge case handling)
+    - Security Agent: reads files for injection pattern analysis; reads
+      requirements.txt / package.json for dependency checking
+    - Performance Agent: reads files to identify anti-patterns (N+1, sync I/O
+      in async context, nested loops)
+    - Style Agent: does NOT use git reader — linter output is sufficient
+    - Summary Agent: does NOT use any tools — reads graph state only
 """
-# Implemented in M2 alongside the MCP server.
+
+# Tool names exposed by this module — used in M3 to document which tools
+# each agent binds to.
+GIT_READER_TOOL_NAMES = ["list_files", "read_file", "get_commit_history"]
+
+# Tool instances are created per-job by ToolManager.git_reader_tools().
+# There is no module-level tool instance because the tools are stateful
+# (they capture repo_path for a specific job).
